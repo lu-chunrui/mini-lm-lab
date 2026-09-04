@@ -20,4 +20,4 @@ Decoder-Only Transformer，并实现和测试 KV Cache。
 - [x] 配置 Python 环境
 - [x] 运行张量示例
 - [x] 运行自动求导示例
-- [x] 完成两道 C++ 基础题
+
