@@ -129,6 +129,8 @@ class TransformerLanguageModel(nn.Module):
         return logits, loss
     @torch.no_grad()
     def generate(self, idx, max_new_tokens=100,temperature=1.0, top_k=5):
+        if temperature<=0.0:
+            raise ValueError("temperature必须大于0.0")
         for _ in range(max_new_tokens):
             idx_context=idx[:,-self.block_size:]
             logits, loss=self(idx_context)
@@ -136,13 +138,13 @@ class TransformerLanguageModel(nn.Module):
             logits=logits/temperature
             if top_k is not None:
                 k=min(top_k, logits.shape[-1])
-                top_values, top_indices=torch.topk(logits, k, dim=-1, sorted=False)
+                top_values, top_indices=torch.topk(logits, k, dim=-1, sorted=True)
                 minimum_value=(top_values[:, -1].unsqueeze(-1))
                 logits=logits.masked_fill(logits< minimum_value, float("-inf"))
-                probabilities=F.softmax(logits, dim=-1)
-                next_idx=torch.multinomial(probabilities, num_samples=1)
-                idx=torch.cat([idx_context, next_idx], dim=-1)
-            return idx
+            probabilities=F.softmax(logits, dim=-1)
+            next_idx=torch.multinomial(probabilities, num_samples=1)
+            idx=torch.cat([idx, next_idx], dim=-1)
+        return idx
 @torch.no_grad()
 def estimate_loss(model):
     model.eval()
@@ -167,7 +169,7 @@ print("loss:", loss.item())
 optimizer=torch.optim.AdamW(model.parameters(), lr=learning_rate)
 checkpoint_directory=Path("checkpoints")
 checkpoint_directory.mkdir(parents=True, exist_ok=True)
-checkpoint_path=checkpoint_directory/"transformer_model.pth"
+checkpoint_path=checkpoint_directory/"best_rmsnorm_swiglu_model.pth"
 best_val_loss = float("inf")
 
 model.train()
@@ -193,9 +195,9 @@ for step in range(max_steps):
                 "optimizer_state_dict": optimizer.state_dict(),
             }
             torch.save(checkpoint_data, checkpoint_path)
+            print(f"保存最佳模型到：{checkpoint_path}")
         else:
             print("val_loss未改进，不保存检查点")
-        print(f"保存最佳模型到：{checkpoint_path}")
 checkpoint_data=torch.load(checkpoint_path)
 model.load_state_dict(checkpoint_data["model_state_dict"])
 optimizer.load_state_dict(checkpoint_data["optimizer_state_dict"])
