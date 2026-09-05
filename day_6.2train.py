@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from pathlib import Path
 
 torch.manual_seed(42)
 train_text = (
@@ -146,6 +147,17 @@ print("标签形状：", y.shape)
 print("logits形状：", logits.shape)
 print("初始loss：", loss.item())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+checkpoint_dir=Path("checkpoints")
+checkpoint_dir.mkdir(exist_ok=True)
+checkpoint_path=checkpoint_dir/"best_model.pth"
+best_val_loss = float("inf")
+config = {
+    "vocab_size": vocab_size,
+    "embedding_dim": embedding_dim,
+    "num_heads": num_heads,
+    "block_size": block_size,
+    "num_layers": num_layers
+}
 @torch.no_grad()
 def estimate_loss(model,data_source,eval_batches=50):
     was_training = model.training
@@ -169,9 +181,17 @@ for step in range(max_steps):
         train_loss = estimate_loss(model, train_data)
         val_loss = estimate_loss(model, val_data)
         print(f"Step {step}, Loss: {loss.item()}. Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-model.eval()
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save({"config": config, "model_state_dict": model.state_dict()}, checkpoint_path)
+            print(f"保存模型到 {checkpoint_path}")
+checkpoint =torch.load(checkpoint_path,map_location="cpu")
+config = checkpoint["config"]
+loaded_model =TransformerLanguageModel(**config)
+loaded_model.load_state_dict(checkpoint["model_state_dict"])
+loaded_model.eval()
+print("加载模型完成")
+print("模型参数数量：", sum(p.numel() for p in loaded_model.parameters()))
 start_idx = torch.tensor([[stoi["\n"]]], dtype=torch.long)
-generated_idx = model.generate(start_idx, max_new_tokens=200)
-result_text = decode(generated_idx[0].tolist())
-print("生成的文本：", result_text)
-
+generated = loaded_model.generate(start_idx, max_new_tokens=100)
+print("加载模型后的生成结果：",decode(generated[0].tolist()))

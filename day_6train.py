@@ -3,15 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 torch.manual_seed(42)
-train_text = (
+text = (
     "人工智能正在改变世界。"
     "大语言模型可以根据上下文预测下一个字符。"
     "学习机器学习需要多写代码多做实验。\n"
 ) * 100
-val_text = ("人工智能需要学习上下文。\n"
-    "大语言模型正在学习预测字符。\n")*20
-all_text = train_text + val_text
-chars = sorted(list(set(all_text)))
+chars = sorted(list(set(text)))
 vocab_size = len(chars)
 stoi = {ch: i for i, ch in enumerate(chars)}
 itos = {i: ch for ch, i in stoi.items()}
@@ -19,19 +16,17 @@ def encode(s):
     return [stoi[c] for c in s]
 def decode(idx):
     return "".join(itos[i] for i in idx)
-train_data=torch.tensor(encode(train_text), dtype=torch.long)
-val_data=torch.tensor(encode(val_text), dtype=torch.long)
+data = torch.tensor(encode(text), dtype=torch.long)
 batch_size = 32
 block_size = 8
 embedding_dim = 32
 num_heads = 4
 learning_rate = 0.001
 max_steps = 1500
-num_layers=2
-def get_batch(data_source):
-    positions = torch.randint(0, len(data_source) - block_size, (batch_size,))
-    x = torch.stack([data_source[p : p + block_size] for p in positions])
-    y = torch.stack([data_source[p + 1 : p + block_size + 1] for p in positions])
+def get_batch():
+    positions = torch.randint(0, len(data) - block_size, (batch_size,))
+    x = torch.stack([data[p : p + block_size] for p in positions])
+    y = torch.stack([data[p + 1 : p + block_size + 1] for p in positions])
     return x, y
 class CausalSelfAttention(nn.Module):
     def __init__(self, embedding_dim, head_size, block_size):
@@ -95,15 +90,13 @@ class TransformerBlock(nn.Module):
         x = x + self.feed_forward(self.layer_norm2(x))
         return x
 class TransformerLanguageModel(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, num_heads, num_layers, block_size):
+    def __init__(self, vocab_size, embedding_dim, num_heads, block_size):
         super().__init__()
         self.block_size = block_size
         self.vocab_size = vocab_size
         self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
         self.position_embedding = nn.Embedding(block_size, embedding_dim)
-        self.transformer_blocks = nn.Sequential(
-            *[TransformerBlock(embedding_dim=embedding_dim, num_heads=num_heads, block_size=block_size) for _ in range(num_layers)]
-        )
+        self.transformer_blocks = TransformerBlock(embedding_dim=embedding_dim, num_heads=num_heads, block_size=block_size)
         self.final_layer_norm = nn.LayerNorm(embedding_dim)
         self.output_linear = nn.Linear(embedding_dim, vocab_size)
     def forward(self, idx, targets=None):
@@ -132,13 +125,13 @@ class TransformerLanguageModel(nn.Module):
             idx = torch.cat((idx, next_token_idx), dim=1)
         return idx
 model = TransformerLanguageModel(
-    vocab_size=vocab_size, embedding_dim=embedding_dim, num_heads=num_heads, num_layers=num_layers, block_size=block_size
+    vocab_size=vocab_size, embedding_dim=embedding_dim, num_heads=num_heads, block_size=block_size
 )
 print("词表大小：", vocab_size)
 print("注意力头数：", num_heads)
 print( "每个头的维度：",embedding_dim // num_heads)
 print("前馈网络隐藏维度：",4 * embedding_dim)
-x,y = get_batch(train_data)
+x,y = get_batch()
 with torch.no_grad():
     logits, loss = model(x, y)
 print("输入形状：", x.shape)
@@ -146,29 +139,15 @@ print("标签形状：", y.shape)
 print("logits形状：", logits.shape)
 print("初始loss：", loss.item())
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-@torch.no_grad()
-def estimate_loss(model,data_source,eval_batches=50):
-    was_training = model.training
-    model.eval()
-    losses = []
-    for _ in range(eval_batches):
-        x, y = get_batch(data_source)
-        _, loss = model(x, y)
-        losses.append(loss.item())
-    if was_training:
-        model.train()
-    return sum(losses) / len(losses)
 model.train()
 for step in range(max_steps):
-    x, y = get_batch(train_data)
+    x, y = get_batch()
     logits, loss = model(x, y)
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
     if step % 100 == 0:
-        train_loss = estimate_loss(model, train_data)
-        val_loss = estimate_loss(model, val_data)
-        print(f"Step {step}, Loss: {loss.item()}. Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        print(f"Step {step}, Loss: {loss.item()}")
 model.eval()
 start_idx = torch.tensor([[stoi["\n"]]], dtype=torch.long)
 generated_idx = model.generate(start_idx, max_new_tokens=200)
