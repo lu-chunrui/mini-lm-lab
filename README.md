@@ -20,7 +20,7 @@
 - **实现教学版 BPE Tokenizer**：支持合并规则学习、文本编码解码、词表构建以及 JSON 保存与加载。
 - **接入 TinyStories**：使用 Hugging Face 流式加载小规模真实英文故事数据。
 - **完整训练流程**：包含随机批量采样、训练集/验证集评估、梯度裁剪和最佳模型保存。
-- **支持 KV Cache**：区分 Prefill 与逐 Token Decode，复用历史 K/V，避免重复计算前缀。
+- **KV Cache 推理加速**：区分 Prefill 与逐 Token Decode，复用历史 K/V；在当前 80-Token CPU 生成实验中实现 **1.75×** 端到端加速。
 - **保留渐进式学习记录**：通过每日代码展示模型从线性回归、Bigram 到完整 Transformer 的演进过程。
 
 ---
@@ -45,6 +45,9 @@
 | 初始验证 Loss | 5.0060 |
 | 最佳验证 Loss | **1.9093** |
 | 对应 Perplexity | 约 **6.75** |
+| 无 KV Cache 生成速度 | 47.00 tokens/s |
+| KV Cache 生成速度 | **82.39 tokens/s** |
+| KV Cache 加速倍数 | **1.75×** |
 
 验证 Loss 从约 `5.01` 稳定下降到 `1.91`，训练 Loss 最终约为 `1.70`。训练集与验证集曲线走势接近，说明模型已经学习到 TinyStories 中常见的局部语法和叙事模式，暂未出现严重过拟合。
 
@@ -72,7 +75,24 @@ the little girl ... saw the sky ...
 - `generate_without_cache()`：每一步重新计算完整上下文。
 - `generate_with_cache()`：Prefill 后缓存每一层、每个注意力头的 K/V，后续只输入最新 Token。
 
-当前 KV Cache 功能已经接入生成流程。速度、吞吐量和内存占用的正式对比实验尚待完成，README 不预先声明未经测量的加速倍数。
+在相同模型、Prompt 和生成参数下进行 5 次重复测试，得到以下结果：
+
+| 生成方式 | 平均耗时 | 生成速度 |
+| --- | ---: | ---: |
+| 无 KV Cache | 1.7021 秒 | 47.00 tokens/s |
+| 使用 KV Cache | **0.9710 秒** | **82.39 tokens/s** |
+
+实验配置：
+
+- Prompt：`Once upon a time`
+- Prompt Token 数量：11
+- 生成 Token 数量：80
+- Temperature：0.5
+- Top-k：1
+- 重复次数：5
+- 计时方式：`time.perf_counter()`
+
+两种方法生成的 Token 序列完全一致，说明缓存没有改变模型输出。在当前 36 万参数、两层 Transformer 的 CPU 实验中，KV Cache 将生成吞吐量从 47.00 tokens/s 提升到 82.39 tokens/s，获得约 **1.75×** 的端到端加速。
 
 ---
 
@@ -242,14 +262,15 @@ max_new_tokens = 80
 - BPE 合并使用重复扫描实现，大数据上的训练效率较低。
 - 尚未实现 EOS 终止逻辑，模型只能按照最大 Token 数停止生成。
 - 尚未加入学习率 Warmup、Cosine Decay 和断点续训。
-- 尚未完成单元测试、KV Cache 基准测试和训练曲线可视化。
+- 尚未完成单元测试、不同生成长度的 KV Cache 曲线和训练 Loss 可视化。
 
 ---
 
 ## 后续计划
 
 - [ ] 记录训练与验证 Loss，并绘制训练曲线
-- [ ] 比较有无 KV Cache 的生成速度和吞吐量
+- [x] 比较有无 KV Cache 的生成速度和吞吐量（80 Token，1.75×）
+- [ ] 比较不同生成长度下的 KV Cache 加速趋势
 - [ ] 为 RoPE、RMSNorm、Tokenizer 和 KV Cache 编写单元测试
 - [ ] 加入 Warmup + Cosine Learning Rate Schedule
 - [ ] 支持断点续训和完整训练状态恢复
