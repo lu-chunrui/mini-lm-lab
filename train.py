@@ -1,26 +1,44 @@
 from pathlib import Path
-from networkx import bethe_hessian_matrix
 import torch
 
 from config import(device,batch_size,block_size,max_seq_len,embedding_dim,num_heads,num_layers,feedforward_dim,learning_rate,max_steps,eval_interval,eval_iterations)
-from tokenizer import CharTokenizer
+from bpe_tokenizer import BPETokenizer
 from model import TransformerLanguageModel
 torch.manual_seed(123)
 project_dir = Path(__file__).resolve().parent
 checkpoint_dir = project_dir / "checkpoints"
 checkpoint_dir.mkdir(parents=True, exist_ok=True)
-checkpoint_path = checkpoint_dir / "best_kv_cache_model.pth"
+checkpoint_path = checkpoint_dir / "best_bpe_model.pth"
 
-text = (
-    "人工智能正在改变世界。"
-    "大语言模型可以根据上下文预测下一个字符。"
-    "学习机器学习需要多写代码多做实验。\n"
-) * 100
-tokenizer = CharTokenizer(text)
-data = torch.tensor(tokenizer.encode(text),dtype=torch.long)
-split_index = int(0.8 * len(data))
-train_data = data[:split_index]
-val_data = data[split_index:]
+train_text_path = project_dir / "data" / "tinystories_train.txt"
+val_text_path = project_dir / "data" / "tinystories_val.txt"
+if not train_text_path.exists():
+    raise FileNotFoundError(
+        "没有找到训练数据，请先运行 python prepare_data.py"
+    )
+if not val_text_path.exists():
+    raise FileNotFoundError(
+        "没有找到验证数据，请先运行 python prepare_data.py"
+    )
+with open(train_text_path, "r", encoding="utf-8") as file:
+    train_text = file.read()
+with open(val_text_path, "r", encoding="utf-8") as file:
+    val_text = file.read()
+print("训练文本字符数：", len(train_text))
+print("验证文本字符数：", len(val_text))
+tokenizer = BPETokenizer()
+tokenizer.train(train_text,num_steps=50)
+tokenizer.save(checkpoint_dir / "bpe_tokenizer.json")
+train_token_ids = tokenizer.encode(train_text)
+val_token_ids = tokenizer.encode(val_text)
+train_data = torch.tensor(
+    train_token_ids,
+    dtype=torch.long
+)
+val_data = torch.tensor(
+    val_token_ids,
+    dtype=torch.long
+)
 print("词表大小：", tokenizer.vocab_size)
 print("训练token数量：", len(train_data))
 print("验证token数量：", len(val_data))
@@ -31,7 +49,7 @@ def get_batch(data_source):
     y=torch.stack([data_source[i+1:i+block_size+1] for i in positions])
     return x.to(device),y.to(device)
 
-@torch.no_grad
+@torch.no_grad()
 def estimate_loss(model):
     model.eval()
     results={}
@@ -40,11 +58,11 @@ def estimate_loss(model):
         losses=[]
         for _ in range(eval_iterations):
             x,y=get_batch(data_source)
-            logits,loss=model(x)
+            logits,loss=model(x,target=y)
             losses.append(loss.item())
-        results[name]=torch.mean(torch.tensor(losses))
-        model.train()
-        return results
+        results[name]=(sum(losses) / len(losses))
+    model.train()
+    return results
 
 model=TransformerLanguageModel(
     vocab_size=tokenizer.vocab_size,
@@ -52,23 +70,23 @@ model=TransformerLanguageModel(
     num_heads=num_heads,
     num_layers=num_layers,
     feedforward_dim=feedforward_dim,
-    learning_rate=learning_rate,
+    max_seq_len=max_seq_len
 ).to(device)
-parameter_count=model.count_parameters(parameter.numel()for parameter in model.parameters())
+parameter_count=sum(parameter.numel()for parameter in model.parameters())
 print("模型参数数量：", parameter_count)
 
 optimizer=torch.optim.AdamW(model.parameters(),lr=learning_rate)
 
-beat_val_loss=float("inf")
+best_val_loss=float("inf")
 model.train()
 for step in range(max_steps):
     x,y=get_batch(train_data)
-    logits,loss=model(x)
+    logits,loss=model(x,target=y)
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(),max_norm=1.0)
     optimizer.step()
-    if (step%eval_interval or step==max_steps-1)==0:
+    if (step%eval_interval==0 or step==max_steps-1):
         results=estimate_loss(model)
         train_loss=results["train"]
         val_loss=results["val"]
@@ -80,7 +98,6 @@ for step in range(max_steps):
                 "optimizer_state_dict":optimizer.state_dict(),
                 "step":step,
                 "val_loss":val_loss,
-                "chars":tokenizer.chars,
                 "vocab_size":tokenizer.vocab_size,
                 "embedding_dim":embedding_dim,
                 "num_heads":num_heads,
