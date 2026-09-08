@@ -24,6 +24,6 @@ def save_stories(split,count,output_path):
 train_path = data_dir / "tinystories_train.txt"
 val_path = data_dir / "tinystories_val.txt"
 
-save_stories("train",500,train_path)
-save_stories("validation",500,val_path)
+save_stories("train",2000,train_path)
+save_stories("validation",200,val_path)
 print("TinyStories 小规模数据集准备完成")
