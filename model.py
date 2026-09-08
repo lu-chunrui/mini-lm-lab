@@ -170,7 +170,7 @@ class TransformerLanguageModel(nn.Module):
         if use_cache:
             return logits,loss, new_past_kv
         return logits, loss
-    def sample_next_token(self,logits,temperature=1.0,top_k=5):
+    def sample_next_token(self,logits,temperature=0.3,top_k=1):
         if temperature<=0.0:
             raise ValueError("temperature must be greater than or equal to 0.0")
         logits=logits/temperature

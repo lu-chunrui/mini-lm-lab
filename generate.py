@@ -48,9 +48,9 @@ print("输入形状：", input_idx.shape)
 with torch.no_grad():
     generated_ids = model.generate_with_cache(
         input_idx,
-        max_new_tokens=200,
+        max_new_tokens=80,
         temperature=0.8,
-        top_k=5
+        top_k=3
     )
 
     generated_text = tokenizer.decode(
