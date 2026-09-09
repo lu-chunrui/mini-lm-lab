@@ -3,18 +3,19 @@ import csv
 import torch
 import math
 
-from config import(device,batch_size,block_size,max_seq_len,embedding_dim,num_heads,num_layers,feedforward_dim,learning_rate,max_steps,eval_interval,eval_iterations)
+from config import(device,batch_size,block_size,max_seq_len,embedding_dim,num_heads,num_layers,feedforward_dim,learning_rate,max_steps,eval_interval,eval_iterations,experiment_name,norm_type)
 from bpe_tokenizer import BPETokenizer
 from model import TransformerLanguageModel
-torch.manual_seed(123)
+torch.manual_seed(42)
+
 project_dir = Path(__file__).resolve().parent
-checkpoint_dir = project_dir / "checkpoints"
+checkpoint_dir = project_dir / "checkpoints" / experiment_name
 checkpoint_dir.mkdir(parents=True, exist_ok=True)
 best_checkpoint_path = checkpoint_dir / "best_bpe_model.pth"
 latest_checkpoint_path = checkpoint_dir / "latest_checkpoint.pth"
 tokenizer_path = checkpoint_dir / "bpe_tokenizer.json"
 resume_training = latest_checkpoint_path.exists()
-experiment_dir = project_dir / "experiments"
+experiment_dir = project_dir / "experiments" / experiment_name
 experiment_dir.mkdir(parents=True, exist_ok=True)
 loss_log_path = experiment_dir / "training_with_lr_loss.csv"
 if not resume_training:
@@ -95,7 +96,8 @@ model=TransformerLanguageModel(
     num_heads=num_heads,
     num_layers=num_layers,
     feedforward_dim=feedforward_dim,
-    max_seq_len=max_seq_len
+    max_seq_len=max_seq_len,
+    norm_type=norm_type,
 ).to(device)
 parameter_count=sum(parameter.numel()for parameter in model.parameters())
 print("模型参数数量：", parameter_count)
@@ -158,7 +160,9 @@ for step in range(start_step,max_steps):
                 "num_heads":num_heads,
                 "num_layers":num_layers,
                 "feedforward_dim":feedforward_dim,
-                "max_seq_len":max_seq_len
+                "max_seq_len":max_seq_len,
+                "norm_type":norm_type,
+                "experiment_name": experiment_name,
             }
             torch.save(checkpoint,best_checkpoint_path)
             print("保存最佳模型：", best_checkpoint_path)
@@ -172,7 +176,9 @@ for step in range(start_step,max_steps):
             "num_heads": num_heads,
             "num_layers": num_layers,
             "feedforward_dim": feedforward_dim,
-            "max_seq_len": max_seq_len
+            "max_seq_len": max_seq_len,
+            "norm_type": norm_type,
+            "experiment_name": experiment_name,
         }
 
         torch.save(

@@ -7,7 +7,7 @@
 
 这是一个使用 PyTorch 从零实现的小型 Decoder-Only Transformer 语言模型项目。项目不调用 `nn.Transformer`，而是从张量运算出发实现注意力、归一化、前馈网络、位置编码、训练和自回归生成，并在 TinyStories 小规模数据集上跑通完整流程。
 
-当前项目已经完成从“基础原理练习”到“可训练语言模型”的闭环，并进一步加入了 BPE Tokenizer、现代 LLM 组件和 KV Cache 推理支持。
+当前项目已经完成从“基础原理练习”到“可训练语言模型”的闭环，并进一步加入了 BPE Tokenizer、现代 LLM 组件、KV Cache 推理、学习率调度、断点续训和实验日志。项目主体功能现已基本定型，后续不再进行大规模结构改造，主要围绕消融实验与基线对比完善实验结论。
 
 > 项目重点不是追求大模型级别的生成质量，而是理解并验证语言模型从数据、分词、建模、训练到推理的完整工作流程。
 
@@ -19,8 +19,10 @@
 - **采用现代 LLM 组件**：实现 RoPE、RMSNorm、SwiGLU 和 Pre-Norm 残差结构。
 - **实现教学版 BPE Tokenizer**：支持合并规则学习、文本编码解码、词表构建以及 JSON 保存与加载。
 - **接入 TinyStories**：使用 Hugging Face 流式加载小规模真实英文故事数据。
-- **完整训练流程**：包含随机批量采样、训练集/验证集评估、梯度裁剪和最佳模型保存。
+- **完整训练流程**：包含随机批量采样、训练集/验证集评估、梯度裁剪、Warmup + Cosine Decay、最佳模型保存和断点续训。
 - **KV Cache 推理加速**：区分 Prefill 与逐 Token Decode，复用历史 K/V；在当前 80-Token CPU 生成实验中实现 **1.75×** 端到端加速。
+- **归一化消融实验**：在相同配置下比较 RMSNorm 与 LayerNorm，并通过两次重复实验分析结果波动。
+- **可复现实验记录**：按实验名称分别保存 Checkpoint、学习率、训练 Loss 和验证 Loss，便于绘图与公平比较。
 - **保留渐进式学习记录**：通过每日代码展示模型从线性回归、Bigram 到完整 Transformer 的演进过程。
 
 ---
@@ -29,7 +31,7 @@
 
 ### TinyStories 小规模训练
 
-当前实验使用约 500 篇训练故事和 500 篇验证故事，模型成功完成训练并保存最佳检查点。
+下表记录早期 TinyStories 小规模基线实验结果。当前实验代码已经进一步支持独立实验目录、学习率调度和断点续训，后续对比均以相同数据、Tokenizer、随机种子与训练预算为控制条件。
 
 | 指标 | 当前结果 |
 | --- | ---: |
@@ -93,6 +95,20 @@ the little girl ... saw the sky ...
 - 计时方式：`time.perf_counter()`
 
 两种方法生成的 Token 序列完全一致，说明缓存没有改变模型输出。在当前 36 万参数、两层 Transformer 的 CPU 实验中，KV Cache 将生成吞吐量从 47.00 tokens/s 提升到 82.39 tokens/s，获得约 **1.75×** 的端到端加速。
+
+### RMSNorm 与 LayerNorm 消融实验
+
+为验证归一化方式对当前小模型的影响，项目在数据、Tokenizer、模型规模、训练步数和学习率调度保持一致的条件下，分别训练 RMSNorm 与 LayerNorm 版本。每次实验训练 1,500 步，并以训练期间记录到的最低验证 Loss 作为比较指标。
+
+| 重复实验 | LayerNorm 最佳验证 Loss | RMSNorm 最佳验证 Loss | 本次较优方案 |
+| --- | ---: | ---: | --- |
+| 实验 1 | 2.0319 | **2.0227** | RMSNorm |
+| 实验 2 | **1.9688** | 1.9833 | LayerNorm |
+| 两次平均 | **2.0003** | 2.0030 | 基本持平 |
+
+第一次实验中 RMSNorm 略优约 `0.0092`，第二次实验中 LayerNorm 略优约 `0.0145`；两次实验的最佳验证 Loss 均值只相差约 `0.0027`。因此，在当前两层、小规模 TinyStories 设定下，尚无证据表明其中一种归一化方式具有稳定优势，实验波动大于两种结构之间的差异。
+
+曲线在个别评估点出现同步下降或回升，主要与验证阶段随机抽取的批次较少有关。当前结论应视为初步消融结果；后续将固定验证批次、提高 `eval_iterations`，并使用更多随机种子报告均值与标准差。
 
 ---
 
@@ -177,8 +193,12 @@ mini-transformer/
 │   ├── tinystories_train.txt
 │   └── tinystories_val.txt
 ├── checkpoints/
-│   ├── best_bpe_model.pth
-│   └── bpe_tokenizer.json
+│   ├── rmsnorm/             # RMSNorm 实验模型与训练断点
+│   └── layer_norm/          # LayerNorm 实验模型与训练断点
+├── experiments/
+│   ├── rmsnorm/             # RMSNorm 的 Loss 与学习率日志
+│   ├── layer_norm/          # LayerNorm 的 Loss 与学习率日志
+│   └── loss_curve.png       # 训练曲线可视化
 ├── training/                # 从基础模型到现代 Transformer 的每日练习
 ├── requirements.txt
 └── README.md
@@ -216,7 +236,9 @@ python train.py
 2. 使用同一套 Tokenizer 编码训练集和验证集。
 3. 定期计算训练 Loss 和验证 Loss。
 4. 对梯度进行裁剪。
-5. 根据验证 Loss 保存最佳模型。
+5. 使用 Warmup + Cosine Decay 调整学习率。
+6. 根据验证 Loss 保存最佳模型，同时保存最近训练状态以支持断点续训。
+7. 将 Step、学习率、训练 Loss 和验证 Loss 写入 CSV 实验日志。
 
 ### 4. 生成文本
 
@@ -261,23 +283,26 @@ max_new_tokens = 80
 - 教学版 BPE 基于 `text.split()`，会丢失原始空白信息，不是完整的 Byte-Level BPE。
 - BPE 合并使用重复扫描实现，大数据上的训练效率较低。
 - 尚未实现 EOS 终止逻辑，模型只能按照最大 Token 数停止生成。
-- 尚未加入学习率 Warmup、Cosine Decay 和断点续训。
-- 尚未完成单元测试、不同生成长度的 KV Cache 曲线和训练 Loss 可视化。
+- 当前验证阶段随机抽取的批次数较少，单个评估点存在一定噪声。
+- 当前消融实验只有少量重复运行，尚不足以证明细微差异具有统计稳定性。
+- 尚未完成不同生成长度的 KV Cache 曲线，以及主要组件的系统化对比实验。
 
 ---
 
 ## 后续计划
 
-- [ ] 记录训练与验证 Loss，并绘制训练曲线
+- [x] 记录训练与验证 Loss，并绘制训练曲线
 - [x] 比较有无 KV Cache 的生成速度和吞吐量（80 Token，1.75×）
 - [ ] 比较不同生成长度下的 KV Cache 加速趋势
-- [ ] 为 RoPE、RMSNorm、Tokenizer 和 KV Cache 编写单元测试
-- [ ] 加入 Warmup + Cosine Learning Rate Schedule
-- [ ] 支持断点续训和完整训练状态恢复
-- [ ] 加入 EOS 特殊 Token 与提前停止生成
-- [ ] 将教学版 BPE 升级为 Byte-Level BPE
-- [ ] 扩大 TinyStories 数据规模和模型参数量
-- [ ] 进行模型深度、上下文长度和词表大小的消融实验
+- [x] 加入 Warmup + Cosine Learning Rate Schedule
+- [x] 支持断点续训和训练状态恢复
+- [x] 完成 RMSNorm 与 LayerNorm 消融实验（两次重复实验，结果基本持平）
+- [ ] 使用固定验证批次和更多评估轮次复核 RMSNorm 与 LayerNorm
+- [ ] 进行 SwiGLU 与 GELU 的等参数量对比实验
+- [ ] 进行 RoPE 与可学习绝对位置编码的对比实验
+- [ ] 进行不同模型深度与上下文长度的消融实验
+- [ ] 对关键实验使用多个随机种子并报告均值与标准差
+- [ ] 将各组实验曲线、参数量、最佳验证 Loss 和生成样例整理为统一表格
 
 ---
 
@@ -285,7 +310,7 @@ max_new_tokens = 80
 
 本项目是一个面向大模型基础原理、训练工程和推理优化的学习型项目。它展示了如何从最小语言模型逐步构建完整的 Decoder-Only Transformer，并通过真实数据完成训练、验证、保存、加载和生成。
 
-后续目标是将项目从“功能正确”继续推进到“实验可复现、结果可量化、代码可测试”，最终形成适合课程展示、课题组申请和个人简历陈述的小型 LLM Research Engineering 项目。
+当前项目主体功能已经基本完成。后续遵循“冻结主体、控制变量、补充证据”的原则，不再进行大规模功能扩展，而是通过归一化、前馈网络、位置编码、模型深度和 KV Cache 等消融与对比实验，将项目从“功能正确”推进到“实验可复现、结果可量化”，最终形成适合课程展示、课题组申请和个人简历陈述的小型 LLM Research Engineering 项目。
 
 ## 致谢
 

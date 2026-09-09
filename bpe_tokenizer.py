@@ -3,14 +3,14 @@ from collections import Counter
 from pathlib import Path
 
 class BPETokenizer:
-   end_of_word = '</w>'
-   unknown_token = '<unk>'
+   end_of_word = '</w>'#表示单词结束的标记
+   unknown_token = '<unk>'#表示未知单词的标记
 
    def __init__(self):
       self.merge_rules = []
       self.token_to_id = {}
       self.id_to_token = {}
-   @property
+   @property#属性式访问
    def vocab_size(self):
       return len(self.token_to_id)
    def count_tokens(self, text):

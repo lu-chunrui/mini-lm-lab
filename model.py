@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from config import norm_type
 class RMSNorm(nn.Module):
     def __init__(self, dim, eps=1e-5):
         super().__init__()
@@ -10,6 +11,12 @@ class RMSNorm(nn.Module):
         mean_square=x.pow(2).mean(dim=-1, keepdim=True)
         inverse_rms=torch.rsqrt(mean_square+self.eps)
         return x*inverse_rms*self.weight
+def create_norm(embedding_dim, norm_type):
+    if norm_type == "rmsnorm":
+        return RMSNorm(embedding_dim)
+    if norm_type == "layer_norm":
+        return nn.LayerNorm(embedding_dim,elementwise_affine=True,bias=False)
+    raise ValueError(f"未知的归一化类型：{norm_type}")
 def precompute_rope(head_size,max_length,base=10000.0):
     if head_size%2!=0:
         raise ValueError("head_size must be even")
@@ -121,19 +128,19 @@ class SwiGLUFeedForward(nn.Module):
         output=self.output_proj(output)
         return output
 class TransformerBlock(nn.Module):
-    def __init__(self,embedding_dim,num_heads,feedforward_dim,max_seq_len):
+    def __init__(self,embedding_dim,num_heads,feedforward_dim,max_seq_len,norm_type=norm_type):
         super().__init__()
         self.attention=MultiHeadAttention(embedding_dim=embedding_dim, num_heads=num_heads, max_seq_len=max_seq_len)
         self.feedforward=SwiGLUFeedForward(embedding_dim=embedding_dim, feedforward_dim=feedforward_dim)
-        self.norm1=RMSNorm(embedding_dim)
-        self.norm2=RMSNorm(embedding_dim)
+        self.norm1=create_norm(embedding_dim, norm_type)
+        self.norm2=create_norm(embedding_dim, norm_type)
     def forward(self,x,past_kv=None,use_cache=False):
         attn_output, attn_cache=self.attention(self.norm1(x), past_kv, use_cache)
         x=x+attn_output
         x=x+self.feedforward(self.norm2(x))
         return x, attn_cache
 class TransformerLanguageModel(nn.Module):
-    def __init__(self,vocab_size,embedding_dim,num_heads,num_layers,feedforward_dim,max_seq_len):
+    def __init__(self,vocab_size,embedding_dim,num_heads,num_layers,feedforward_dim,max_seq_len,norm_type=norm_type):
         super().__init__()
         self.embedding_dim=embedding_dim
         self.num_heads=num_heads
@@ -141,7 +148,7 @@ class TransformerLanguageModel(nn.Module):
         self.max_seq_len=max_seq_len
         self.token_embedding=nn.Embedding(vocab_size, embedding_dim)
         self.blocks=nn.ModuleList(
-            [TransformerBlock(embedding_dim=embedding_dim, num_heads=num_heads, feedforward_dim=feedforward_dim, max_seq_len=max_seq_len) for _ in range(num_layers)]
+            [TransformerBlock(embedding_dim=embedding_dim, num_heads=num_heads, feedforward_dim=feedforward_dim, max_seq_len=max_seq_len, norm_type=norm_type) for _ in range(num_layers)]
         )
         self.final_norm=RMSNorm(embedding_dim)
         self.output_linear=nn.Linear(embedding_dim, vocab_size, bias=False)

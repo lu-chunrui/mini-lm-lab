@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 project_dir = Path(__file__).resolve().parent
 experiment_dir = project_dir / "experiments"
-loss_log_path = experiment_dir / "training_loss.csv"
+loss_log_path = experiment_dir / "training_with_lr_loss.csv"
 figure_path = experiment_dir / "loss_curve.png"
 
 steps=[]

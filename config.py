@@ -12,9 +12,13 @@ num_layers = 2
 feedforward_dim = 256
 
 learning_rate = 0.0005
-max_steps = 800
+max_steps = 1500
 eval_interval = 50
 eval_iterations = 5
 
 generation_length = 50
+
+experiment_name = "layer_norm"
+norm_type = "layer_norm"
+
 
