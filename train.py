@@ -49,7 +49,7 @@ if resume_training:
             "没有找到分词器，请先运行 python train.py"
         )
     tokenizer = BPETokenizer.load(tokenizer_path)
-    print("加载已有Tokenizer：", tokenizer_path)
+    print("加载已有Tokenizer：", tokenizer_path.relative_to(project_dir))
 else:
     tokenizer = BPETokenizer()
     tokenizer.train(train_text,num_steps=50)
@@ -112,7 +112,7 @@ if resume_training:
     start_step=checkpoint["step"]+1
     best_val_loss=checkpoint.get("best_val_loss",
     checkpoint.get("val_loss", float("inf")))
-    print("成功加载训练断点：", latest_checkpoint_path)
+    print("成功加载训练断点：", latest_checkpoint_path.relative_to(project_dir))
     print("上次训练到 step：", checkpoint["step"])
     print("本次从 step 开始：", start_step)
     print("历史最佳验证loss：", best_val_loss)
@@ -166,7 +166,7 @@ for step in range(start_step,max_steps):
                 "feedforward_type": feedforward_type,
             }
             torch.save(checkpoint,best_checkpoint_path)
-            print("保存最佳模型：", best_checkpoint_path)
+            print("保存最佳模型：", best_checkpoint_path.relative_to(project_dir))
         latest_checkpoint = {
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
@@ -189,10 +189,10 @@ for step in range(start_step,max_steps):
         )
         print(
             "保存最近训练状态：",
-            latest_checkpoint_path
+            latest_checkpoint_path.relative_to(project_dir)
         )
     
 print("训练完成")
 print("最佳验证损失：", best_val_loss)
-print("最佳模型已保存至：", best_checkpoint_path)
-print("最近训练状态保存至：", latest_checkpoint_path)
+print("最佳模型已保存至：", best_checkpoint_path.relative_to(project_dir))
+print("最近训练状态保存至：", latest_checkpoint_path.relative_to(project_dir))
