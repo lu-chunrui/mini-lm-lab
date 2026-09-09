@@ -3,11 +3,11 @@
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-From%20Scratch-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Dataset](https://img.shields.io/badge/Dataset-TinyStories-FFD21E)](https://huggingface.co/datasets/roneneldan/TinyStories)
-[![Status](https://img.shields.io/badge/Status-Training%20Pipeline%20Complete-success)](#核心结果)
+[![Status](https://img.shields.io/badge/Status-Project%20Complete-success)](#核心结果)
 
 这是一个使用 PyTorch 从零实现的小型 Decoder-Only Transformer 语言模型项目。项目不调用 `nn.Transformer`，而是从张量运算出发实现注意力、归一化、前馈网络、位置编码、训练和自回归生成，并在 TinyStories 小规模数据集上跑通完整流程。
 
-当前项目已经完成从“基础原理练习”到“可训练语言模型”的闭环，并进一步加入了 BPE Tokenizer、现代 LLM 组件、KV Cache 推理、学习率调度、断点续训和实验日志。项目主体功能现已基本定型，后续不再进行大规模结构改造，主要围绕消融实验与基线对比完善实验结论。
+当前项目已经完成从“基础原理练习”到“可训练语言模型”的闭环，并进一步加入了 BPE Tokenizer、现代 LLM 组件、KV Cache 推理、学习率调度、断点续训和实验日志。在此基础上，项目完成了前馈网络与模型深度对比实验。目前主体功能和实验均已收尾，代码进入稳定维护状态，不再继续扩展模型功能。
 
 > 项目重点不是追求大模型级别的生成质量，而是理解并验证语言模型从数据、分词、建模、训练到推理的完整工作流程。
 
@@ -22,6 +22,8 @@
 - **完整训练流程**：包含随机批量采样、训练集/验证集评估、梯度裁剪、Warmup + Cosine Decay、最佳模型保存和断点续训。
 - **KV Cache 推理加速**：区分 Prefill 与逐 Token Decode，复用历史 K/V；在当前 80-Token CPU 生成实验中实现 **1.75×** 端到端加速。
 - **归一化消融实验**：在相同配置下比较 RMSNorm 与 LayerNorm，并通过两次重复实验分析结果波动。
+- **前馈网络对比实验**：在严格匹配参数量的条件下比较 SwiGLU 与 GELU，两个随机种子下 SwiGLU 均取得更低的验证 Loss。
+- **模型深度对比实验**：比较 2 层与 4 层 Transformer，量化模型容量增加带来的效果提升与参数成本。
 - **可复现实验记录**：按实验名称分别保存 Checkpoint、学习率、训练 Loss 和验证 Loss，便于绘图与公平比较。
 - **保留渐进式学习记录**：通过每日代码展示模型从线性回归、Bigram 到完整 Transformer 的演进过程。
 
@@ -68,7 +70,7 @@ once upon a time there was a mirror. One day, ...
 the little girl ... saw the sky ...
 ```
 
-这是当前小数据、低参数量和小词表设定下的预期现象。项目后续将通过更大的 BPE 词表、更多训练数据和更完整的训练策略改善生成质量。
+这是当前小数据、低参数量和小词表设定下的预期现象。本项目关注完整训练流程与组件实验，不以追求大模型级生成质量为目标。
 
 ### KV Cache
 
@@ -108,7 +110,30 @@ the little girl ... saw the sky ...
 
 第一次实验中 RMSNorm 略优约 `0.0092`，第二次实验中 LayerNorm 略优约 `0.0145`；两次实验的最佳验证 Loss 均值只相差约 `0.0027`。因此，在当前两层、小规模 TinyStories 设定下，尚无证据表明其中一种归一化方式具有稳定优势，实验波动大于两种结构之间的差异。
 
-曲线在个别评估点出现同步下降或回升，主要与验证阶段随机抽取的批次较少有关。当前结论应视为初步消融结果；后续将固定验证批次、提高 `eval_iterations`，并使用更多随机种子报告均值与标准差。
+曲线在个别评估点出现同步下降或回升，主要与验证阶段随机抽取批次带来的噪声有关。因此，这组结果作为探索性实验记录，结论限定为：在当前规模下，两种归一化方式没有表现出稳定的显著差异。
+
+### SwiGLU 与 GELU 对比实验
+
+为比较门控前馈网络与传统 Transformer 前馈网络，实验保持数据、Tokenizer、模型深度、归一化方式、学习率调度和训练步数一致，仅替换前馈网络。SwiGLU 使用隐藏维度 256；GELU 使用隐藏维度 384，使两组两层模型的参数量均为 394,368，从而避免参数规模差异干扰结果。
+
+| 随机种子 | SwiGLU 最佳验证 Loss | GELU 最佳验证 Loss | 本次较优方案 |
+| --- | ---: | ---: | --- |
+| 42 | **2.0245** | 2.0918 | SwiGLU |
+| 123 | **2.0192** | 2.0910 | SwiGLU |
+| 两次平均 | **2.0218** | 2.0914 | SwiGLU |
+
+两个随机种子下，SwiGLU 均取得更低的验证 Loss。两次实验的平均最佳验证 Loss 比 GELU 低约 `0.0696`，对应平均 Perplexity 约从 `8.10` 降至 `7.55`。结果表明，在当前等参数量的小型 Transformer 上，SwiGLU 相比 GELU 具有更好的学习效果和跨随机种子一致性。
+
+### 2 层与 4 层模型对比
+
+在随机种子 123 下，将 Transformer 从 2 层增加到 4 层，并保持隐藏维度、注意力头数、数据和训练预算不变。该实验用于观察增加模型容量后验证性能的变化。
+
+| 前馈网络 | 2 层最佳验证 Loss | 4 层最佳验证 Loss | 2 层参数量 | 4 层参数量 |
+| --- | ---: | ---: | ---: | ---: |
+| SwiGLU | 2.0192 | **1.9060** | 394,368 | 755,328 |
+| GELU | 2.0910 | **2.0142** | 394,368 | 755,328 |
+
+4 层模型在两种前馈网络下都获得了更低的最佳验证 Loss，其中 SwiGLU 的改善约为 `0.1132`，GELU 的改善约为 `0.0768`。这说明增加模型深度能够提升当前任务上的建模能力，但参数量也由约 39.4 万增加至约 75.5 万。综合所有已完成实验，4 层 SwiGLU 模型取得最低验证 Loss `1.9060`。
 
 ---
 
@@ -193,12 +218,14 @@ mini-transformer/
 │   ├── tinystories_train.txt
 │   └── tinystories_val.txt
 ├── checkpoints/
-│   ├── rmsnorm/             # RMSNorm 实验模型与训练断点
-│   └── layer_norm/          # LayerNorm 实验模型与训练断点
+│   ├── swiglu_42/           # 2 层 SwiGLU，随机种子 42
+│   ├── gelu_42/             # 2 层 GELU，随机种子 42
+│   ├── swiglu_123/          # 2 层 SwiGLU，随机种子 123
+│   ├── gelu_123/            # 2 层 GELU，随机种子 123
+│   ├── swiglu_2_123/        # 4 层 SwiGLU，随机种子 123
+│   └── gelu_2_123/          # 4 层 GELU，随机种子 123
 ├── experiments/
-│   ├── rmsnorm/             # RMSNorm 的 Loss 与学习率日志
-│   ├── layer_norm/          # LayerNorm 的 Loss 与学习率日志
-│   └── loss_curve.png       # 训练曲线可视化
+│   └── <experiment_name>/   # 各组训练 Loss、验证 Loss 与学习率日志
 ├── training/                # 从基础模型到现代 Transformer 的每日练习
 ├── requirements.txt
 └── README.md
@@ -283,9 +310,9 @@ max_new_tokens = 80
 - 教学版 BPE 基于 `text.split()`，会丢失原始空白信息，不是完整的 Byte-Level BPE。
 - BPE 合并使用重复扫描实现，大数据上的训练效率较低。
 - 尚未实现 EOS 终止逻辑，模型只能按照最大 Token 数停止生成。
-- 当前验证阶段随机抽取的批次数较少，单个评估点存在一定噪声。
-- 当前消融实验只有少量重复运行，尚不足以证明细微差异具有统计稳定性。
-- 尚未完成不同生成长度的 KV Cache 曲线，以及主要组件的系统化对比实验。
+- 验证阶段仍采用随机批次估计，单个评估点可能存在一定噪声。
+- 部分实验只使用一个或两个随机种子，结论仅适用于当前小模型与数据配置。
+- 项目定位为教学与实验验证，不包含分布式训练、混合精度训练和大规模性能优化。
 
 ---
 
@@ -293,16 +320,14 @@ max_new_tokens = 80
 
 - [x] 记录训练与验证 Loss，并绘制训练曲线
 - [x] 比较有无 KV Cache 的生成速度和吞吐量（80 Token，1.75×）
-- [ ] 比较不同生成长度下的 KV Cache 加速趋势
 - [x] 加入 Warmup + Cosine Learning Rate Schedule
 - [x] 支持断点续训和训练状态恢复
 - [x] 完成 RMSNorm 与 LayerNorm 消融实验（两次重复实验，结果基本持平）
-- [ ] 使用固定验证批次和更多评估轮次复核 RMSNorm 与 LayerNorm
-- [ ] 进行 SwiGLU 与 GELU 的等参数量对比实验
-- [ ] 进行 RoPE 与可学习绝对位置编码的对比实验
-- [ ] 进行不同模型深度与上下文长度的消融实验
-- [ ] 对关键实验使用多个随机种子并报告均值与标准差
-- [ ] 将各组实验曲线、参数量、最佳验证 Loss 和生成样例整理为统一表格
+- [x] 完成 SwiGLU 与 GELU 的等参数量对比实验
+- [x] 使用两个随机种子验证前馈网络实验的一致性
+- [x] 完成 2 层与 4 层 Transformer 深度对比
+- [x] 汇总参数量、最佳验证 Loss、Perplexity 和训练曲线
+
 
 ---
 
@@ -310,7 +335,7 @@ max_new_tokens = 80
 
 本项目是一个面向大模型基础原理、训练工程和推理优化的学习型项目。它展示了如何从最小语言模型逐步构建完整的 Decoder-Only Transformer，并通过真实数据完成训练、验证、保存、加载和生成。
 
-当前项目主体功能已经基本完成。后续遵循“冻结主体、控制变量、补充证据”的原则，不再进行大规模功能扩展，而是通过归一化、前馈网络、位置编码、模型深度和 KV Cache 等消融与对比实验，将项目从“功能正确”推进到“实验可复现、结果可量化”，最终形成适合课程展示、课题组申请和个人简历陈述的小型 LLM Research Engineering 项目。
+当前项目已经完成预定的模型实现、训练闭环、推理优化和组件对比实验。最终成果展示了从原理实现到可复现实验的完整过程，可用于课程展示、课题组申请和个人简历中的小型 LLM Research Engineering 项目经历。
 
 ## 致谢
 

@@ -3,10 +3,10 @@ import csv
 import torch
 import math
 
-from config import(device,batch_size,block_size,max_seq_len,embedding_dim,num_heads,num_layers,feedforward_dim,learning_rate,max_steps,eval_interval,eval_iterations,experiment_name,norm_type)
+from config import(device,batch_size,block_size,max_seq_len,embedding_dim,num_heads,num_layers,feedforward_dim,learning_rate,max_steps,eval_interval,eval_iterations,experiment_name,norm_type,feedforward_type)
 from bpe_tokenizer import BPETokenizer
 from model import TransformerLanguageModel
-torch.manual_seed(42)
+torch.manual_seed(123)
 
 project_dir = Path(__file__).resolve().parent
 checkpoint_dir = project_dir / "checkpoints" / experiment_name
@@ -163,6 +163,7 @@ for step in range(start_step,max_steps):
                 "max_seq_len":max_seq_len,
                 "norm_type":norm_type,
                 "experiment_name": experiment_name,
+                "feedforward_type": feedforward_type,
             }
             torch.save(checkpoint,best_checkpoint_path)
             print("保存最佳模型：", best_checkpoint_path)
@@ -179,6 +180,7 @@ for step in range(start_step,max_steps):
             "max_seq_len": max_seq_len,
             "norm_type": norm_type,
             "experiment_name": experiment_name,
+            "feedforward_type": feedforward_type,
         }
 
         torch.save(

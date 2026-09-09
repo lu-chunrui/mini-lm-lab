@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import norm_type
+from config import norm_type,feedforward_type
 class RMSNorm(nn.Module):
     def __init__(self, dim, eps=1e-5):
         super().__init__()
@@ -127,11 +127,30 @@ class SwiGLUFeedForward(nn.Module):
         output=gate*value
         output=self.output_proj(output)
         return output
+class GELUFeedForward(nn.Module):
+    def __init__(self,embedding_dim,feedforward_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(embedding_dim,feedforward_dim,bias=False),
+            nn.GELU(),
+            nn.Linear(feedforward_dim,embedding_dim,bias=False)
+        )
+    def forward(self, x):
+        return self.net(x)
+def create_feedforward(embedding_dim,feedforward_dim,feedforward_type):
+    if feedforward_type == "swiglu":
+        return SwiGLUFeedForward(embedding_dim,feedforward_dim)
+    if feedforward_type == "gelu":
+        gelu_hidden_dim = int( feedforward_dim * 3 / 2)
+        return GELUFeedForward(embedding_dim,gelu_hidden_dim )
+    raise ValueError(
+        f"未知的前馈网络类型：{feedforward_type}"
+    )
 class TransformerBlock(nn.Module):
-    def __init__(self,embedding_dim,num_heads,feedforward_dim,max_seq_len,norm_type=norm_type):
+    def __init__(self,embedding_dim,num_heads,feedforward_dim,max_seq_len,norm_type=norm_type,feedforward_type=feedforward_type):
         super().__init__()
         self.attention=MultiHeadAttention(embedding_dim=embedding_dim, num_heads=num_heads, max_seq_len=max_seq_len)
-        self.feedforward=SwiGLUFeedForward(embedding_dim=embedding_dim, feedforward_dim=feedforward_dim)
+        self.feedforward=create_feedforward(embedding_dim=embedding_dim, feedforward_dim=feedforward_dim, feedforward_type=feedforward_type)
         self.norm1=create_norm(embedding_dim, norm_type)
         self.norm2=create_norm(embedding_dim, norm_type)
     def forward(self,x,past_kv=None,use_cache=False):
@@ -148,9 +167,9 @@ class TransformerLanguageModel(nn.Module):
         self.max_seq_len=max_seq_len
         self.token_embedding=nn.Embedding(vocab_size, embedding_dim)
         self.blocks=nn.ModuleList(
-            [TransformerBlock(embedding_dim=embedding_dim, num_heads=num_heads, feedforward_dim=feedforward_dim, max_seq_len=max_seq_len, norm_type=norm_type) for _ in range(num_layers)]
+            [TransformerBlock(embedding_dim=embedding_dim, num_heads=num_heads, feedforward_dim=feedforward_dim, max_seq_len=max_seq_len, norm_type=norm_type,feedforward_type=feedforward_type) for _ in range(num_layers)]
         )
-        self.final_norm=RMSNorm(embedding_dim)
+        self.final_norm=create_norm(embedding_dim, norm_type)
         self.output_linear=nn.Linear(embedding_dim, vocab_size, bias=False)
     def forward(self,x,target=None,past_kv=None,use_cache=False):
         B,T=x.shape
