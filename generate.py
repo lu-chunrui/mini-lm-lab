@@ -17,7 +17,6 @@ print("验证loss：", checkpoint["val_loss"])
 tokenizer_path = project_dir / "checkpoints" / "bpe_tokenizer.json"
 tokenizer = BPETokenizer.load(tokenizer_path)
 print("词表大小：", tokenizer.vocab_size)
-
 model = TransformerLanguageModel(
     vocab_size=checkpoint["vocab_size"],
     embedding_dim=checkpoint["embedding_dim"],
