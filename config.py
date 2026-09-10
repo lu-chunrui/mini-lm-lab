@@ -19,7 +19,6 @@ eval_iterations = 50
 generation_length = 50
 
 experiment_name = "gelu_2_123"
-
 norm_type = "rmsnorm"
 feedforward_type = "gelu"
 
