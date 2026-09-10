@@ -5,7 +5,7 @@ from bpe_tokenizer import BPETokenizer
 from model import TransformerLanguageModel
 
 project_dir = Path(__file__).resolve().parent
-checkpoint_path = project_dir / "checkpoints" / "best_bpe_model.pth"
+checkpoint_path = project_dir / "checkpoints" /"swiglu_2_123"/ "best_bpe_model.pth"
 
 if not checkpoint_path.exists():raise FileNotFoundError(f"没有找到模型文件：{checkpoint_path}\n"
     "请先运行python train.py")
@@ -13,7 +13,7 @@ checkpoint=torch.load(checkpoint_path,map_location=device)
 print("加载模型：", checkpoint_path)
 print("训练step：", checkpoint["step"])
 print("验证loss：", checkpoint["val_loss"])
-tokenizer_path = project_dir / "checkpoints" / "bpe_tokenizer.json"
+tokenizer_path = project_dir / "checkpoints" /"swiglu_2_123"/ "bpe_tokenizer.json"
 tokenizer = BPETokenizer.load(tokenizer_path)
 print("词表大小：", tokenizer.vocab_size)
 model = TransformerLanguageModel(

@@ -18,9 +18,9 @@ eval_iterations = 50
 
 generation_length = 50
 
-experiment_name = "gelu_2_123"
+experiment_name = "swiglu_2_123"
 norm_type = "rmsnorm"
-feedforward_type = "gelu"
+feedforward_type = "swiglu"
 
 
 
