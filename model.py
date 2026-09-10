@@ -158,6 +158,7 @@ class TransformerBlock(nn.Module):
         x=x+attn_output
         x=x+self.feedforward(self.norm2(x))
         return x, attn_cache
+    
 class TransformerLanguageModel(nn.Module):
     def __init__(self,vocab_size,embedding_dim,num_heads,num_layers,feedforward_dim,max_seq_len,norm_type=norm_type):
         super().__init__()
