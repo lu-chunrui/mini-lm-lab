@@ -55,71 +55,6 @@
 
 验证 Loss 从约 `5.01` 稳定下降到 `1.91`，训练 Loss 最终约为 `1.70`。训练集与验证集曲线走势接近，说明模型已经学习到 TinyStories 中常见的局部语法和叙事模式，暂未出现严重过拟合。
 
-### KV Cache
-
-项目已实现两种生成路径：
-
-- `generate_without_cache()`：每一步重新计算完整上下文。
-- `generate_with_cache()`：Prefill 后缓存每一层、每个注意力头的 K/V，后续只输入最新 Token。
-
-在相同模型、Prompt 和生成参数下进行 5 次重复测试，得到以下结果：
-
-| 生成方式 | 平均耗时 | 生成速度 |
-| --- | ---: | ---: |
-| 无 KV Cache | 1.7021 秒 | 47.00 tokens/s |
-| 使用 KV Cache | **0.9710 秒** | **82.39 tokens/s** |
-
-实验配置：
-
-- Prompt：`Once upon a time`
-- Prompt Token 数量：11
-- 生成 Token 数量：80
-- Temperature：0.5
-- Top-k：1
-- 重复次数：5
-- 计时方式：`time.perf_counter()`
-
-两种方法生成的 Token 序列完全一致，说明缓存没有改变模型输出。在当前 36 万参数、两层 Transformer 的 CPU 实验中，KV Cache 将生成吞吐量从 47.00 tokens/s 提升到 82.39 tokens/s，获得约 **1.75×** 的端到端加速。
-
-### RMSNorm 与 LayerNorm 消融实验
-
-为验证归一化方式对当前小模型的影响，项目在数据、Tokenizer、模型规模、训练步数和学习率调度保持一致的条件下，分别训练 RMSNorm 与 LayerNorm 版本。每次实验训练 1,500 步，并以训练期间记录到的最低验证 Loss 作为比较指标。
-
-| 重复实验 | LayerNorm 最佳验证 Loss | RMSNorm 最佳验证 Loss | 本次较优方案 |
-| --- | ---: | ---: | --- |
-| 实验 1 | 2.0319 | **2.0227** | RMSNorm |
-| 实验 2 | **1.9688** | 1.9833 | LayerNorm |
-| 两次平均 | **2.0003** | 2.0030 | 基本持平 |
-
-第一次实验中 RMSNorm 略优约 `0.0092`，第二次实验中 LayerNorm 略优约 `0.0145`；两次实验的最佳验证 Loss 均值只相差约 `0.0027`。因此，在当前两层、小规模 TinyStories 设定下，尚无证据表明其中一种归一化方式具有稳定优势，实验波动大于两种结构之间的差异。
-
-曲线在个别评估点出现同步下降或回升，主要与验证阶段随机抽取批次带来的噪声有关。因此，这组结果作为探索性实验记录，结论限定为：在当前规模下，两种归一化方式没有表现出稳定的显著差异。
-
-### SwiGLU 与 GELU 对比实验
-
-为比较门控前馈网络与传统 Transformer 前馈网络，实验保持数据、Tokenizer、模型深度、归一化方式、学习率调度和训练步数一致，仅替换前馈网络。SwiGLU 使用隐藏维度 256；GELU 使用隐藏维度 384，使两组两层模型的参数量均为 394,368，从而避免参数规模差异干扰结果。
-
-| 随机种子 | SwiGLU 最佳验证 Loss | GELU 最佳验证 Loss | 本次较优方案 |
-| --- | ---: | ---: | --- |
-| 42 | **2.0245** | 2.0918 | SwiGLU |
-| 123 | **2.0192** | 2.0910 | SwiGLU |
-| 两次平均 | **2.0218** | 2.0914 | SwiGLU |
-
-两个随机种子下，SwiGLU 均取得更低的验证 Loss。两次实验的平均最佳验证 Loss 比 GELU 低约 `0.0696`，对应平均 Perplexity 约从 `8.10` 降至 `7.55`。结果表明，在当前等参数量的小型 Transformer 上，SwiGLU 相比 GELU 具有更好的学习效果和跨随机种子一致性。
-
-### 2 层与 4 层模型对比
-
-在随机种子 123 下，将 Transformer 从 2 层增加到 4 层，并保持隐藏维度、注意力头数、数据和训练预算不变。该实验用于观察增加模型容量后验证性能的变化。
-
-| 前馈网络 | 2 层最佳验证 Loss | 4 层最佳验证 Loss | 2 层参数量 | 4 层参数量 |
-| --- | ---: | ---: | ---: | ---: |
-| SwiGLU | 2.0192 | **1.9060** | 394,368 | 755,328 |
-| GELU | 2.0910 | **2.0142** | 394,368 | 755,328 |
-
-4 层模型在两种前馈网络下都获得了更低的最佳验证 Loss，其中 SwiGLU 的改善约为 `0.1132`，GELU 的改善约为 `0.0768`。这说明增加模型深度能够提升当前任务上的建模能力，但参数量也由约 39.4 万增加至约 75.5 万。综合所有已完成实验，4 层 SwiGLU 模型取得最低验证 Loss `1.9060`。
-
----
-
 ## 模型架构
 
 ```text
@@ -149,42 +84,6 @@ Vocabulary Projection             [B, T, vocab_size]
   ↓
 Cross-Entropy Loss / Token Sampling
 ```
-
-### 核心模块
-
-#### RMSNorm
-
-使用均方根对隐藏状态进行归一化，并通过可学习缩放参数恢复表达能力：
-
-```python
-mean_square = x.pow(2).mean(dim=-1, keepdim=True)
-inverse_rms = torch.rsqrt(mean_square + eps)
-output = x * inverse_rms * weight
-```
-
-#### RoPE
-
-对 Q 和 K 的成对维度施加与位置相关的旋转，使注意力分数包含相对位置信息。KV Cache 解码时通过 `position_offset` 保证新 Token 使用正确的绝对位置。
-
-#### Causal Multi-Head Attention
-
-每个注意力头独立计算 Q、K、V 和缩放点积注意力，使用因果遮罩阻止当前位置看到未来 Token。各个头的输出拼接后再经过线性投影。
-
-#### SwiGLU
-
-前馈网络使用门控结构：
-
-```python
-output = output_proj(
-    silu(gate_linear(x)) * value_linear(x)
-)
-```
-
-#### KV Cache
-
-生成第一个 Token 前进行 Prefill，得到所有历史 Token 的 K/V；后续 Decode 阶段只计算最新 Token 的 Q/K/V，并将新的 K/V 追加到缓存的序列维。
-
----
 
 ## 项目结构
 
@@ -298,29 +197,3 @@ max_new_tokens = 80
 - 项目定位为教学与实验验证，不包含分布式训练、混合精度训练和大规模性能优化。
 
 ---
-
-## 后续计划
-
-- [x] 记录训练与验证 Loss，并绘制训练曲线
-- [x] 比较有无 KV Cache 的生成速度和吞吐量（80 Token，1.75×）
-- [x] 加入 Warmup + Cosine Learning Rate Schedule
-- [x] 支持断点续训和训练状态恢复
-- [x] 完成 RMSNorm 与 LayerNorm 消融实验（两次重复实验，结果基本持平）
-- [x] 完成 SwiGLU 与 GELU 的等参数量对比实验
-- [x] 使用两个随机种子验证前馈网络实验的一致性
-- [x] 完成 2 层与 4 层 Transformer 深度对比
-- [x] 汇总参数量、最佳验证 Loss、Perplexity 和训练曲线
-
-
----
-
-## 项目定位
-
-本项目是一个面向大模型基础原理、训练工程和推理优化的学习型项目。它展示了如何从最小语言模型逐步构建完整的 Decoder-Only Transformer，并通过真实数据完成训练、验证、保存、加载和生成。
-
-当前项目已经完成预定的模型实现、训练闭环、推理优化和组件对比实验。最终成果展示了从原理实现到可复现实验的完整过程，可用于课程展示、课题组申请和个人简历中的小型 LLM Research Engineering 项目经历。
-
-## 致谢
-
-- [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories)：用于小型语言模型训练的英文故事数据集。
-- [PyTorch](https://pytorch.org/)：提供基础张量运算、自动求导和模块系统。
