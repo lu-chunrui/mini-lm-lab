@@ -118,6 +118,7 @@ if resume_training:
     print("历史最佳验证loss：", best_val_loss)
 else:
     print("没有发现训练断点，从头开始训练")
+    
 def get_learning_rate(step):
     warmup_steps=200
     minimum_learning_rate=3e-5
