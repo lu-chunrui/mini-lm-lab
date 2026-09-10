@@ -13,7 +13,6 @@ checkpoint=torch.load(checkpoint_path,map_location=device)
 print("加载模型：", checkpoint_path)
 print("训练step：", checkpoint["step"])
 print("验证loss：", checkpoint["val_loss"])
-
 tokenizer_path = project_dir / "checkpoints" / "bpe_tokenizer.json"
 tokenizer = BPETokenizer.load(tokenizer_path)
 print("词表大小：", tokenizer.vocab_size)
