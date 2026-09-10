@@ -22,6 +22,7 @@ def save_stories(split,count,output_path):
     print(f"保存位置：{output_path}")
 
 train_path = data_dir / "tinystories_train.txt"
+
 val_path = data_dir / "tinystories_val.txt"
 
 save_stories("train",2000,train_path)
