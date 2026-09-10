@@ -20,6 +20,7 @@ generation_length = 50
 
 experiment_name = "swiglu_2_123"
 norm_type = "rmsnorm"
+
 feedforward_type = "swiglu"
 
 
