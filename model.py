@@ -160,7 +160,7 @@ class TransformerBlock(nn.Module):
         return x, attn_cache
     
 class TransformerLanguageModel(nn.Module):
-    def __init__(self,vocab_size,embedding_dim,num_heads,num_layers,feedforward_dim,max_seq_len,norm_type=norm_type):
+    def __init__(self,vocab_size,embedding_dim,num_heads,num_layers,feedforward_dim,max_seq_len,norm_type=norm_type,feedforward_type=feedforward_type):
         super().__init__()
         self.embedding_dim=embedding_dim
         self.num_heads=num_heads

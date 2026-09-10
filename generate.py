@@ -25,7 +25,9 @@ model = TransformerLanguageModel(
     feedforward_dim=checkpoint[
         "feedforward_dim"
     ],
-    max_seq_len=checkpoint["max_seq_len"]
+    max_seq_len=checkpoint["max_seq_len"],
+    norm_type=checkpoint.get("norm_type","rmsnorm"),
+    feedforward_type=checkpoint.get("feedforward_type","swiglu"),
 ).to(device)
 model.load_state_dict(checkpoint["model_state_dict"])
 model.eval()
