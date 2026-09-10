@@ -17,7 +17,7 @@
 
 - **从零实现 Decoder-Only Transformer**：手写因果自注意力、多头注意力、Transformer Block 和语言模型输出层。
 - **采用现代 LLM 组件**：实现 RoPE、RMSNorm、SwiGLU 和 Pre-Norm 残差结构。
-- **实现教学版 BPE Tokenizer**：支持合并规则学习、文本编码解码、词表构建以及 JSON 保存与加载。
+- **实现 BPE Tokenizer**：支持合并规则学习、文本编码解码、词表构建以及 JSON 保存与加载。
 - **接入 TinyStories**：使用 Hugging Face 流式加载小规模真实英文故事数据。
 - **完整训练流程**：包含随机批量采样、训练集/验证集评估、梯度裁剪、Warmup + Cosine Decay、最佳模型保存和断点续训。
 - **KV Cache 推理加速**：区分 Prefill 与逐 Token Decode，复用历史 K/V；在当前 80-Token CPU 生成实验中实现 **1.75×** 端到端加速。
