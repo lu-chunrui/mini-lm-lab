@@ -168,19 +168,3 @@ max_new_tokens = 80
 
 ---
 
-## 每日实现路线
-
-| 阶段 | 学习与实现内容 | 状态 |
-| --- | --- | --- |
-| Day 1 | 线性回归、Loss、反向传播和优化器 | 已完成 |
-| Day 2 | 字符级 Bigram 语言模型 | 已完成 |
-| Day 3 | 固定上下文窗口与批量采样 | 已完成 |
-| Day 4 | Q/K/V、缩放点积、Softmax 与因果遮罩 | 已完成 |
-| Day 5 | 多头因果自注意力 | 已完成 |
-| Day 6 | 前馈网络、残差连接、归一化与多层 Block | 已完成 |
-| Day 7 | RMSNorm、SwiGLU 与 RoPE | 已完成 |
-| Day 8 | KV Cache 与模块拆分 | 已完成 |
-| Day 9 | 教学版 BPE Tokenizer | 已完成 |
-| Day 10 | TinyStories 数据、训练、验证和生成闭环 | 已完成 |
-
----
