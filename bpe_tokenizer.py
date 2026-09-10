@@ -63,6 +63,7 @@ class BPETokenizer:
     for pair in self.merge_rules:
         tokens=self.merge_tokens(tokens,pair)
     return tokens
+   
    def tokenize(self, text):
     tokens=[]
     for word in text.split():
