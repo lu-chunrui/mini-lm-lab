@@ -11,5 +11,6 @@ class CharTokenizer:
         self.vocab_size=len(self.chars)
     def encode(self, text):
         return [self.stoi[ch] for ch in text]
-    def decode(self, ids):
+    
+    def decode(self, ids):    
         return ''.join([self.itos[i] for i in ids])
